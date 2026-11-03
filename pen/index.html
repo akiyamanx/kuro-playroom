@@ -1,0 +1,275 @@
+<!DOCTYPE html>
+<!-- ノック式ボールペン 3D分解図
+     作成: クロちゃん(Claude) / 2026-11-01(初版) / 2026-11-03 あそび部屋へ移設
+     アキヤのボールペン写真をもとに three.js r128 で作成。外見は写真から、内部構造は一般的なノック式の想像。 -->
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>ボールペン分解図 — クロちゃんのあそび部屋</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Zen+Kaku+Gothic+New:wght@400;700;900&family=JetBrains+Mono:wght@400;600&display=swap">
+<style>
+/* レイアウト: 上に名前と仕様の細帯、中央に3Dキャンバス、下に操作ボタンと部品表 */
+:root{
+  --bg:#eef2f5; --panel:#ffffff; --fg:#1d2a35; --muted:#5f7180; --line:#d3dce3;
+  --accent:#ff6a3d; --pen-blue:#8fbfe4;
+  --f-disp:"Zen Kaku Gothic New",system-ui,sans-serif;
+  --f-mono:"JetBrains Mono",ui-monospace,monospace;
+  color-scheme:light; box-sizing:border-box;
+}
+@media (prefers-color-scheme: dark){:root:not([data-theme="light"]){
+  --bg:#111a21; --panel:#18232c; --fg:#e6edf2; --muted:#93a5b3; --line:#2a3946; --accent:#ff7d55; --pen-blue:#8fbfe4; color-scheme:dark}}
+:root[data-theme="dark"]{--bg:#111a21; --panel:#18232c; --fg:#e6edf2; --muted:#93a5b3; --line:#2a3946; --accent:#ff7d55; --pen-blue:#8fbfe4; color-scheme:dark}
+*,*::before,*::after{box-sizing:inherit}
+body{margin:0;background:var(--bg);color:var(--fg);font-family:var(--f-disp);font-size:14px;
+  padding-left:max(16px,env(safe-area-inset-left,0px));padding-right:max(16px,env(safe-area-inset-right,0px));
+  padding-top:max(16px,env(safe-area-inset-top,0px));padding-bottom:max(16px,env(safe-area-inset-bottom,0px))}
+.wrap{max-width:960px;margin:0 auto;display:flex;flex-direction:column;gap:12px}
+.back{font-size:.85rem;color:var(--muted);text-decoration:none}
+.back:hover{color:var(--fg)}
+header{display:flex;flex-wrap:wrap;align-items:baseline;justify-content:space-between;gap:8px}
+h1{margin:0;font-size:1.5rem;font-weight:900;letter-spacing:.02em;text-wrap:balance}
+h1 small{display:block;font-family:var(--f-mono);font-size:.7rem;font-weight:400;color:var(--muted);letter-spacing:.12em;text-transform:uppercase}
+.spec{font-family:var(--f-mono);font-size:.75rem;color:var(--muted);display:flex;gap:14px;flex-wrap:wrap}
+.spec b{color:var(--fg);font-weight:600}
+.stage{position:relative;width:100%;aspect-ratio:4/3;max-width:100%;max-height:70vh;background:var(--panel);border:1px solid var(--line);border-radius:10px;overflow:hidden}
+canvas{display:block;width:100%;height:100%;touch-action:none}
+.status{position:absolute;left:12px;bottom:10px;font-family:var(--f-mono);font-size:.8rem;font-weight:600;color:var(--accent);letter-spacing:.14em}
+.lab{position:absolute;transform:translate(-50%,-140%);font-size:.72rem;font-weight:700;color:var(--fg);background:var(--panel);border:1px solid var(--line);padding:2px 7px;border-radius:4px;white-space:nowrap;pointer-events:none;transition:opacity .25s}
+.lab::after{content:"";position:absolute;left:50%;top:100%;width:1px;height:10px;background:var(--muted)}
+.controls{display:flex;flex-wrap:wrap;gap:8px}
+button{font-family:var(--f-disp);font-size:.95rem;font-weight:700;padding:10px 16px;border-radius:999px;border:1px solid var(--line);background:var(--panel);color:var(--fg);cursor:pointer}
+button[aria-pressed="true"]{background:var(--fg);color:var(--bg);border-color:var(--fg)}
+button:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+.parts{display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:6px 18px;font-size:.85rem;margin:0;padding:0;list-style:none}
+.parts li{display:flex;gap:10px;align-items:baseline;border-bottom:1px solid var(--line);padding:6px 0;min-width:0}
+.parts span{font-family:var(--f-mono);font-size:.72rem;color:var(--muted);min-width:2.2em}
+.note{font-size:.78rem;color:var(--muted);margin:0}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <a class="back" href="../">← クロちゃんのあそび部屋へ</a>
+  <header>
+    <h1><small>Retractable Ballpoint · Teardown</small>ノック式ボールペン 分解図</h1>
+    <div class="spec"><span>部品 <b>7</b></span><span>全長 <b>約140mm</b></span><span>芯径 <b>0.7mm</b></span></div>
+  </header>
+  <div class="stage" id="stage">
+    <canvas id="cv" aria-label="ボールペンの3D分解アニメーション"></canvas>
+    <div class="status" id="status">ASSEMBLED</div>
+  </div>
+  <div class="controls">
+    <button id="bAuto" aria-pressed="true">▶ 自動再生</button>
+    <button id="bExp">分解する</button>
+    <button id="bAsm">組み立てる</button>
+    <button id="bKnock">カチッとノック</button>
+    <button id="bLook" aria-pressed="true">質感:リアル</button>
+  </div>
+  <ul class="parts">
+    <li><span>01</span>ノックボタン(透明)</li>
+    <li><span>02</span>ヘッド+クリップ(透明ブルー)</li>
+    <li><span>03</span>軸・バレル(白)</li>
+    <li><span>04</span>ラバーグリップ(水色)</li>
+    <li><span>05</span>先端パーツ</li>
+    <li><span>06</span>スプリング</li>
+    <li><span>07</span>替芯(リフィル)</li>
+  </ul>
+  <p class="note">外見は写真から、内部構造は一般的なノック式の想像で作っています。指でぐるっと回せます。<br>作成: クロちゃん(Claude) / 2026-11-01</p>
+</div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/controls/OrbitControls.js"></script>
+<script>
+(function(){
+const cv=document.getElementById('cv'), stage=document.getElementById('stage');
+const renderer=new THREE.WebGLRenderer({canvas:cv,antialias:true,alpha:true});
+renderer.setPixelRatio(Math.min(devicePixelRatio,2));
+renderer.setClearColor(0x000000,0);
+renderer.outputEncoding=THREE.sRGBEncoding;
+renderer.shadowMap.enabled=true; renderer.shadowMap.type=THREE.PCFSoftShadowMap;
+const scene=new THREE.Scene();
+const cam=new THREE.PerspectiveCamera(35,1,0.1,100);
+cam.position.set(0,3,17);
+const ctl=new THREE.OrbitControls(cam,cv);
+ctl.enableDamping=true; ctl.enablePan=false; ctl.minDistance=10; ctl.maxDistance=40;
+ctl.autoRotate=false;
+
+const hemi=new THREE.HemisphereLight(0xffffff,0xaabbcc,0.95); scene.add(hemi);
+const d1=new THREE.DirectionalLight(0xffffff,0.9); d1.position.set(4,12,6); scene.add(d1);
+d1.castShadow=true; d1.shadow.mapSize.set(1024,1024); d1.shadow.radius=6;
+Object.assign(d1.shadow.camera,{left:-10,right:10,top:10,bottom:-10,near:1,far:30});
+const d2=new THREE.DirectionalLight(0xcfe6ff,0.4); d2.position.set(-8,-4,-6); scene.add(d2);
+
+// 素材
+const M={
+  white:new THREE.MeshStandardMaterial({color:0xf6f7f8,roughness:0.35}),
+  rubber:new THREE.MeshStandardMaterial({color:0x96c3e6,roughness:0.85}),
+  clear:new THREE.MeshStandardMaterial({color:0xe8f2fb,roughness:0.08,transparent:true,opacity:0.45}),
+  clearBlue:new THREE.MeshStandardMaterial({color:0x9cc7ee,roughness:0.08,transparent:true,opacity:0.55}),
+  metal:new THREE.MeshStandardMaterial({color:0xc9ccd0,roughness:0.25,metalness:0.9}),
+  ink:new THREE.MeshStandardMaterial({color:0x1f3fb0,roughness:0.4}),
+  window:new THREE.MeshStandardMaterial({color:0x6f93b8,roughness:0.2,transparent:true,opacity:0.8}),
+  spring:new THREE.MeshStandardMaterial({color:0xb8bcc2,roughness:0.3,metalness:0.85})
+};
+// リアル版の素材(映り込み・クリアコート・ガラスっぽい透明)
+const P=o=>new THREE.MeshPhysicalMaterial(o);
+const R={
+  white:P({color:0xe4e8ec,roughness:0.32,clearcoat:0.7,clearcoatRoughness:0.15}),
+  rubber:P({color:0x6fa8db,roughness:0.9}),
+  clear:P({color:0xdfe9f3,roughness:0.04,metalness:0,clearcoat:1,transparent:true,opacity:0.38,depthWrite:false,envMapIntensity:1.0}),
+  clearBlue:P({color:0x7ab2e6,roughness:0.04,clearcoat:1,transparent:true,opacity:0.55,depthWrite:false,envMapIntensity:1.0}),
+  metal:P({color:0xd6d9dd,roughness:0.15,metalness:1}),
+  ink:P({color:0x2342b8,roughness:0.25,clearcoat:0.5}),
+  window:P({color:0x5f86b0,roughness:0.05,clearcoat:1,transparent:true,opacity:0.85}),
+  spring:P({color:0xc4c8ce,roughness:0.18,metalness:1})
+};
+// 撮影スタジオ風の部屋を作って、その明かりをツヤに映す
+function studioEnv(){
+  const env=new THREE.Scene();
+  const room=new THREE.Mesh(new THREE.BoxGeometry(30,20,30),new THREE.MeshBasicMaterial({color:0x2f353b,side:THREE.BackSide}));
+  env.add(room);
+  [[0,9.5,0,10,0.2,6,2.2],[ -14.5,3,0,0.2,6,10,0.9],[14.5,4,-4,0.2,4,6,1.4],[0,4,-14.5,8,3,0.2,0.6]].forEach(a=>{
+    const m=new THREE.Mesh(new THREE.BoxGeometry(a[3],a[4],a[5]),new THREE.MeshBasicMaterial({color:new THREE.Color(1,1,1).multiplyScalar(a[6])}));
+    m.position.set(a[0],a[1],a[2]); env.add(m);
+  });
+  const pm=new THREE.PMREMGenerator(renderer); const tex=pm.fromScene(env,0.04).texture; pm.dispose(); return tex;
+}
+const envTex=studioEnv();
+// 影を受ける見えない床
+const floor=new THREE.Mesh(new THREE.PlaneGeometry(40,40),new THREE.ShadowMaterial({opacity:0.22}));
+floor.rotation.x=-Math.PI/2; floor.position.y=-4.6; floor.receiveShadow=true; scene.add(floor);
+// x軸方向の回転体を作る [半径, x]
+function lathe(pts,mat){
+  const g=new THREE.LatheGeometry(pts.map(p=>new THREE.Vector2(p[0],p[1])),72);
+  g.rotateZ(-Math.PI/2); return new THREE.Mesh(g,mat);
+}
+function cyl(r,x0,x1,mat,seg){
+  const g=new THREE.CylinderGeometry(r,r,x1-x0,seg||40); g.rotateZ(Math.PI/2);
+  const m=new THREE.Mesh(g,mat); m.position.x=(x0+x1)/2; return m;
+}
+function oval(sx,sy,sz,mat){ const m=new THREE.Mesh(new THREE.SphereGeometry(1,24,16),mat); m.scale.set(sx,sy,sz); return m; }
+
+const pen=new THREE.Group(); scene.add(pen);
+const parts=[];
+function part(name,offset,rot){ const g=new THREE.Group(); g.userData={name,offset:new THREE.Vector3(...offset),rot:rot||0}; pen.add(g); parts.push(g); return g; }
+
+// 01 ノックボタン
+const knob=part('ノックボタン',[3.6,0.4,0],0.4);
+knob.add(lathe([[0,6.9],[0.2,6.88],[0.28,6.75],[0.29,5.5],[0,5.5]],M.clear));
+// 02 ヘッド+クリップ
+const head=part('ヘッド+クリップ',[2.2,2.1,0],-0.25);
+head.add(lathe([[0.36,5.75],[0.47,5.55],[0.52,5.1],[0.53,4.5],[0.0,4.5]],M.clearBlue));
+const clip=new THREE.Mesh(new THREE.BoxGeometry(4.2,0.1,0.32),M.clearBlue); clip.position.set(3.25,0.66,0); head.add(clip);
+const clipEnd=oval(0.22,0.12,0.17,M.clearBlue); clipEnd.position.set(1.2,0.6,0); head.add(clipEnd);
+const clipRoot=new THREE.Mesh(new THREE.BoxGeometry(0.6,0.2,0.34),M.clearBlue); clipRoot.position.set(5.1,0.56,0); head.add(clipRoot);
+// 03 軸
+const barrel=part('軸(バレル)',[0.4,1.15,0],0.12);
+barrel.add(lathe([[0.5,-2.0],[0.53,-1.0],[0.54,2.5],[0.53,4.5],[0,4.5],[0,-2.0]],M.white));
+const win=oval(0.42,0.2,0.1,M.window); win.position.set(3.6,0,0.5); barrel.add(win);
+// 04 グリップ
+const grip=part('ラバーグリップ',[-1.4,-1.0,0],-0.15);
+grip.add(lathe([[0.42,-6.0],[0.5,-5.6],[0.58,-4.2],[0.6,-2.6],[0.56,-1.9],[0,-1.9],[0,-6.0]],M.rubber));
+[[-2.9,0.36],[-4.1,0.28]].forEach(([x,s])=>{ const o=oval(s,s*0.55,0.12,M.white); o.position.set(x,0,0.55); grip.add(o); });
+[-1.95,4.5].forEach(x=>{ const r=new THREE.Mesh(new THREE.TorusGeometry(x<0?0.55:0.53,0.012,8,72),M.ink.clone()); r.material.color.set(0x9aa6b2); r.rotation.y=Math.PI/2; r.position.x=x; barrel.add(r); });
+// 05 先端パーツ
+const tip=part('先端パーツ',[-2.8,0.5,0],0.3);
+tip.add(lathe([[0.42,-6.0],[0.36,-6.2],[0.2,-6.55],[0.13,-6.62],[0.13,-6.0]],M.white));
+tip.add(lathe([[0.18,-6.25],[0.14,-6.5],[0.12,-6.62],[0.12,-6.25]],M.clear));
+// 06 スプリング
+const spring=part('スプリング',[-1.0,-2.0,0],0);
+class Helix extends THREE.Curve{ constructor(){super(); this.s=1;} getPoint(t,o=new THREE.Vector3()){ const a=t*Math.PI*2*11; return o.set(-5.9+t*1.5*this.s,0.19*Math.cos(a),0.19*Math.sin(a)); } }
+const helix=new Helix();
+let springMesh=new THREE.Mesh(new THREE.TubeGeometry(helix,300,0.028,6,false),M.spring); spring.add(springMesh);
+// 07 替芯
+const refill=part('替芯(リフィル)',[0.3,-3.0,0],0);
+refill.add(cyl(0.12,-5.95,5.0,M.clear));
+refill.add(cyl(0.085,-5.6,2.6,M.ink));
+refill.add(lathe([[0.12,-5.95],[0.1,-6.3],[0.05,-6.85],[0,-6.9]],M.metal));
+const ball=new THREE.Mesh(new THREE.SphereGeometry(0.045,16,12),M.metal); ball.position.x=-6.9; refill.add(ball);
+refill.add(lathe([[0.13,5.0],[0.13,5.25],[0,5.25]],M.white));
+
+// 質感の切り替え(リアル⇔シンプル)
+const keyOf=new Map(Object.entries(M).map(([k,v])=>[v,k]));
+pen.traverse(o=>{ if(o.isMesh){ o.castShadow=true; o.userData.key=keyOf.get(o.material); } });
+let real=true;
+function applyLook(){
+  pen.traverse(o=>{ if(o.isMesh && o.userData.key) o.material=(real?R:M)[o.userData.key]; });
+  scene.environment=real?envTex:null;
+  renderer.toneMapping=real?THREE.ACESFilmicToneMapping:THREE.NoToneMapping; renderer.toneMappingExposure=0.88;
+  hemi.intensity=real?0.25:0.95; d1.intensity=real?1.1:0.9; d2.intensity=real?0.2:0.4;
+  floor.visible=real; d1.castShadow=real;
+  Object.values(R).concat(Object.values(M)).forEach(m=>m.needsUpdate=true);
+  const b=document.getElementById('bLook'); b.setAttribute('aria-pressed',real); b.textContent=real?'質感:リアル':'質感:シンプル';
+}
+// ラベル
+// 分解時は部品を1段ずつ縦に並べる(ラベルが重ならないように)
+const ROWS={'ノックボタン':3.6,'ヘッド+クリップ':2.4,'軸(バレル)':1.2,'ラバーグリップ':0,'先端パーツ':-1.2,'スプリング':-2.3,'替芯(リフィル)':-3.5};
+parts.forEach(p=>{ const c=new THREE.Box3().setFromObject(p).getCenter(new THREE.Vector3()); p.userData.offset.set(-c.x*0.45,ROWS[p.userData.name]-c.y,0); });
+parts.forEach(p=>{ const d=document.createElement('div'); d.className='lab'; d.textContent=p.userData.name; d.style.opacity=0; stage.appendChild(d); p.userData.lab=d; p.userData.center=new THREE.Box3().setFromObject(p).getCenter(new THREE.Vector3()); });
+
+// 状態
+let ex=0, exTarget=0, knock=0, auto=true, t0=performance.now(), manualKnockAt=-99;
+const reduce=matchMedia('(prefers-reduced-motion: reduce)').matches;
+const ease=t=>t<.5?4*t*t*t:1-Math.pow(-2*t+2,3)/2;
+const statusEl=document.getElementById('status');
+const RETRACT=0.45; // 収納時に芯が引っ込む量
+
+function knockCurve(s){ // 0..1 → 押し込み量(押す→戻る)
+  if(s<0||s>1) return 0; return s<0.35? ease(s/0.35) : 1-ease((s-0.35)/0.65);
+}
+function autoState(t){ // 13秒周期のタイムライン
+  const c=t%13; let e=0,k=0,label='ASSEMBLED';
+  if(c<1.5){} else if(c<2.5){k=knockCurve((c-1.5)/1.0);label='CLICK';}
+  else if(c<4.3){e=ease((c-2.5)/1.8);label='TEARDOWN';}
+  else if(c<8.5){e=1;label='EXPLODED';}
+  else if(c<10.3){e=1-ease((c-8.5)/1.8);label='REASSEMBLE';}
+  else if(c<11.3){k=knockCurve((c-10.3)/1.0);label='CLICK';}
+  return {e,k,label};
+}
+function setSpring(scale){
+  if(Math.abs(helix.s-scale)<0.01) return;
+  helix.s=scale; springMesh.geometry.dispose(); springMesh.geometry=new THREE.TubeGeometry(helix,300,0.028,6,false);
+}
+function resize(){ const w=stage.clientWidth,h=stage.clientHeight; renderer.setSize(w,h,false); cam.aspect=w/h; cam.fov=w<520?44:34; cam.updateProjectionMatrix(); }
+addEventListener('resize',resize); resize();
+
+const v=new THREE.Vector3();
+function frame(now){
+  const t=(now-t0)/1000; let label;
+  if(auto && !reduce){ const s=autoState(t); ex=s.e; knock=s.k; label=s.label; }
+  else { ex+=(exTarget-ex)*0.08; knock=knockCurve((t-manualKnockAt)/1.0); label=ex>0.5?'EXPLODED':(knock>0.01?'CLICK':'ASSEMBLED'); }
+  statusEl.textContent=label;
+  parts.forEach(p=>{
+    const u=p.userData; p.position.copy(u.offset).multiplyScalar(ex); p.rotation.x=u.rot*ex*0.6;
+  });
+  // ノック: ボタンが沈み、芯が前に出る
+  knob.position.x+= -0.35*knock;
+  refill.position.x+= RETRACT - RETRACT*1.0*knock - (ex>0? RETRACT*ex:0);
+  setSpring(1-0.3*knock*(1-ex));
+  floor.position.y=-1.4-3.2*ex; // 組立時は影をペンの近くに
+  pen.rotation.z=Math.sin(t*0.6)*0.04; pen.rotation.y=Math.sin(t*0.35)*0.45;
+  ctl.update(); renderer.render(scene,cam);
+  // ラベル位置
+  const w=stage.clientWidth,h=stage.clientHeight;
+  parts.forEach(p=>{
+    v.copy(p.userData.center).add(p.position); pen.localToWorld(v); v.project(cam);
+    const d=p.userData.lab; d.style.left=((v.x+1)/2*w)+'px'; d.style.top=((1-v.y)/2*h)+'px'; d.style.opacity=ex>0.75?1:0;
+  });
+  requestAnimationFrame(frame);
+}
+applyLook();
+requestAnimationFrame(frame);
+
+const bAuto=document.getElementById('bAuto');
+function stopAuto(){ auto=false; bAuto.setAttribute('aria-pressed','false'); bAuto.textContent='▶ 自動再生'; exTarget=ex; }
+bAuto.onclick=()=>{ auto=!auto; bAuto.setAttribute('aria-pressed',auto); if(auto) t0=performance.now(); else exTarget=Math.round(ex); };
+document.getElementById('bExp').onclick=()=>{ stopAuto(); exTarget=1; };
+document.getElementById('bAsm').onclick=()=>{ stopAuto(); exTarget=0; };
+document.getElementById('bKnock').onclick=()=>{ stopAuto(); exTarget=0; manualKnockAt=(performance.now()-t0)/1000; };
+document.getElementById('bLook').onclick=()=>{ real=!real; applyLook(); };
+if(reduce){ auto=false; bAuto.setAttribute('aria-pressed','false'); }
+})();
+</script>
+</body>
+</html>
